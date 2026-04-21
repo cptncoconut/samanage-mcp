@@ -25,6 +25,61 @@ def _assign_party(obj: dict[str, Any], key: str, identifier: str) -> None:
         sub["name"] = identifier
 
 
+def _as_list(value: list[str] | str | None) -> list[str] | None:
+    if value is None:
+        return None
+    return value if isinstance(value, list) else [value]
+
+
+def _build_incident_filters(
+    *,
+    state: list[str] | str | None = None,
+    priority: list[str] | str | None = None,
+    assignee: list[str] | str | None = None,
+    requester: list[str] | str | None = None,
+    category: list[str] | str | None = None,
+    site: list[str] | str | None = None,
+    department: list[str] | str | None = None,
+    group: list[str] | str | None = None,
+    name_contains: str | None = None,
+    created_from: str | None = None,
+    created_to: str | None = None,
+    updated_days: int | None = None,
+    sort_by: str | None = None,
+    sort_order: str | None = None,
+) -> dict[str, Any]:
+    """Translate ergonomic tool args into Samanage's query-string conventions."""
+    params: dict[str, Any] = {}
+    array_fields = {
+        "state[]": _as_list(state),
+        "priority[]": _as_list(priority),
+        "assignee[]": _as_list(assignee),
+        "requester[]": _as_list(requester),
+        "category[]": _as_list(category),
+        "site[]": _as_list(site),
+        "department[]": _as_list(department),
+        "group[]": _as_list(group),
+    }
+    for key, val in array_fields.items():
+        if val:
+            params[key] = val
+    if name_contains:
+        params["name.contains"] = name_contains
+    if created_from and created_to:
+        params["created[]"] = [created_from, created_to]
+    elif created_from:
+        params["created_gt"] = created_from
+    elif created_to:
+        params["created_lt"] = created_to
+    if updated_days is not None:
+        params["updated"] = updated_days
+    if sort_by:
+        params["sort_by"] = sort_by
+    if sort_order:
+        params["sort_order"] = sort_order
+    return params
+
+
 async def _attach_to_incident(incident_id: str | int, attachment: str) -> dict[str, Any]:
     """Attach a local file path or remote URL to an incident, gated by
     ``samanage_mcp.attachments`` safety checks (host allowlist, private-IP
@@ -238,8 +293,12 @@ def register(mcp: FastMCP) -> None:
     async def list_incidents(
         state: list[str] | str | None = None,
         priority: list[str] | str | None = None,
-        assignee: str | None = None,
-        requester: str | None = None,
+        assignee: list[str] | str | None = None,
+        requester: list[str] | str | None = None,
+        category: list[str] | str | None = None,
+        site: list[str] | str | None = None,
+        department: list[str] | str | None = None,
+        group: list[str] | str | None = None,
         name_contains: str | None = None,
         created_from: str | None = None,
         created_to: str | None = None,
@@ -248,40 +307,43 @@ def register(mcp: FastMCP) -> None:
         sort_order: str | None = None,
         per_page: int = 100,
         max_pages: int | None = 5,
-        extra_params: dict[str, Any] | None = None,
+        filters: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """List Samanage incidents with common filters.
+        """List Samanage incidents with filters.
 
-        Filters map to Samanage query params: `state[]`, `priority[]`,
-        `assigned_to`, `requester`, `name.contains`, `created[]=[from,to]`,
-        `updated` (days). Pass raw extra filters via `extra_params`.
-        Defaults to at most 5 pages x 100 per page.
+        Named filter args map to Samanage's array-valued query keys:
+          state[], priority[], assignee[], requester[], category[], site[],
+          department[], group[], created[]=[from,to], updated (days),
+          name.contains, sort_by, sort_order.
+
+        For anything else — custom fields, additional filters your tenant
+        supports, etc. — pass a `filters` dict whose keys are sent verbatim
+        as query params. Examples:
+          {"priority[]": ["High", "Critical"]}
+          {"My Custom Field": "Some Value"}
+          {"tags[]": "vip"}
+
+        Samanage only honors filters when the versioned Accept header is sent;
+        this server sets `application/vnd.samanage.v2.1+json` by default.
         """
-        params: dict[str, Any] = {}
-        if state:
-            params["state[]"] = state if isinstance(state, list) else [state]
-        if priority:
-            params["priority[]"] = priority if isinstance(priority, list) else [priority]
-        if assignee:
-            params["assigned_to"] = assignee
-        if requester:
-            params["requester"] = requester
-        if name_contains:
-            params["name.contains"] = name_contains
-        if created_from and created_to:
-            params["created[]"] = [created_from, created_to]
-        elif created_from:
-            params["created_gt"] = created_from
-        elif created_to:
-            params["created_lt"] = created_to
-        if updated_days is not None:
-            params["updated"] = updated_days
-        if sort_by:
-            params["sort_by"] = sort_by
-        if sort_order:
-            params["sort_order"] = sort_order
-        if extra_params:
-            params.update(extra_params)
+        params: dict[str, Any] = _build_incident_filters(
+            state=state,
+            priority=priority,
+            assignee=assignee,
+            requester=requester,
+            category=category,
+            site=site,
+            department=department,
+            group=group,
+            name_contains=name_contains,
+            created_from=created_from,
+            created_to=created_to,
+            updated_days=updated_days,
+            sort_by=sort_by,
+            sort_order=sort_order,
+        )
+        if filters:
+            params.update(filters)
 
         try:
             items = await client.list(
@@ -289,7 +351,7 @@ def register(mcp: FastMCP) -> None:
             )
         except SamanageError as exc:
             return {"error": str(exc), "status_code": exc.status_code, "body": exc.body}
-        return {"count": len(items), "incidents": items}
+        return {"count": len(items), "incidents": items, "applied_filters": params}
 
     @mcp.tool()
     async def get_incident(id: str | int) -> dict[str, Any]:

@@ -30,12 +30,25 @@ def register(mcp: FastMCP) -> None:
         query: str | None = None,
         limit: int = 50,
         full: bool = False,
+        filters: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """List Samanage users. Optionally filter by a case-insensitive substring
-        against name or email. Returns a compact view by default; pass
-        `full=True` to get raw records."""
+        """List Samanage users.
+
+        - `query` is a client-side case-insensitive substring filter against
+          name or email.
+        - `filters` is a dict of query params sent verbatim to Samanage for
+          server-side filtering (e.g. `{"role[]": "Administrator"}` or
+          `{"department[]": "IT"}`; custom-field names may also be used).
+
+        Returns a compact view by default; pass `full=True` for raw records.
+        """
         try:
-            users = await client.fetch_users()
+            if filters:
+                # filtered list bypasses the users cache since cache is
+                # keyed on "no filter"
+                users = await client.list("users", params=filters, per_page=100)
+            else:
+                users = await client.fetch_users()
         except SamanageError as exc:
             return {"error": str(exc), "status_code": exc.status_code}
 

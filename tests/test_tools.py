@@ -101,6 +101,12 @@ async def test_list_incidents_builds_filters() -> None:
         "list_incidents",
         state=["Active", "New"],
         priority="High",
+        assignee="alice@example.com",
+        requester="bob@example.com",
+        category="Network",
+        site="HQ",
+        department="IT",
+        group="Ops",
         name_contains="wifi",
         max_pages=1,
     )
@@ -109,7 +115,57 @@ async def test_list_incidents_builds_filters() -> None:
     qs = req.url.params
     assert qs.get_list("state[]") == ["Active", "New"]
     assert qs.get_list("priority[]") == ["High"]
+    assert qs.get_list("assignee[]") == ["alice@example.com"]
+    assert qs.get_list("requester[]") == ["bob@example.com"]
+    assert qs.get_list("category[]") == ["Network"]
+    assert qs.get_list("site[]") == ["HQ"]
+    assert qs.get_list("department[]") == ["IT"]
+    assert qs.get_list("group[]") == ["Ops"]
     assert qs["name.contains"] == "wifi"
+
+
+@respx.mock
+async def test_list_incidents_filters_passthrough_for_custom_fields() -> None:
+    settings.samanage_dry_run = False
+    route = respx.get("https://api.samanage.com/incidents.json").mock(
+        return_value=httpx.Response(200, json=[])
+    )
+    await _call(
+        "list_incidents",
+        max_pages=1,
+        filters={"My Custom Field": "Some Value", "tags[]": ["vip", "priority"]},
+    )
+    qs = route.calls.last.request.url.params
+    assert qs["My Custom Field"] == "Some Value"
+    assert qs.get_list("tags[]") == ["vip", "priority"]
+
+
+@respx.mock
+async def test_list_incidents_sends_versioned_accept_header() -> None:
+    settings.samanage_dry_run = False
+    route = respx.get("https://api.samanage.com/incidents.json").mock(
+        return_value=httpx.Response(200, json=[])
+    )
+    await _call("list_incidents", state="Active", max_pages=1)
+    assert route.calls.last.request.headers["accept"] == (
+        "application/vnd.samanage.v2.1+json"
+    )
+
+
+@respx.mock
+async def test_list_incidents_created_range() -> None:
+    settings.samanage_dry_run = False
+    route = respx.get("https://api.samanage.com/incidents.json").mock(
+        return_value=httpx.Response(200, json=[])
+    )
+    await _call(
+        "list_incidents",
+        created_from="2026-04-01",
+        created_to="2026-04-21",
+        max_pages=1,
+    )
+    qs = route.calls.last.request.url.params
+    assert qs.get_list("created[]") == ["2026-04-01", "2026-04-21"]
 
 
 @respx.mock

@@ -69,7 +69,10 @@ class SamanageClient:
     def _headers(self, *, json_body: bool = False) -> dict[str, str]:
         headers = {
             "X-Samanage-Authorization": f"Bearer {self.api_token}",
-            "Accept": "application/json",
+            # Versioned Accept is required for Samanage to honor the full
+            # filter surface on list endpoints. Override via
+            # SAMANAGE_ACCEPT_HEADER if your tenant needs a different version.
+            "Accept": settings.samanage_accept_header,
         }
         if json_body:
             headers["Content-Type"] = "application/json"
@@ -245,7 +248,7 @@ class SamanageClient:
         }
         headers = {
             "X-Samanage-Authorization": f"Bearer {self.api_token}",
-            "Accept": "application/json",
+            "Accept": settings.samanage_accept_header,
         }
         async with httpx.AsyncClient(timeout=self.default_timeout) as client:
             resp = await client.post(url, headers=headers, files=files, data=data)

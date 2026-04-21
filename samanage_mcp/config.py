@@ -30,6 +30,12 @@ class Settings(BaseSettings):
     # Singular JSON wrapper key for response-template request bodies.
     samanage_response_template_singular: str = "response_template"
 
+    # Accept header. The versioned form (v2.1+json) is required for Samanage
+    # to honor the full filter surface on list endpoints; plain application/json
+    # silently drops many filters. Override only for tenants pinned to an older
+    # API version.
+    samanage_accept_header: str = "application/vnd.samanage.v2.1+json"
+
     # Dry-run: write tools log and return synthetic results instead of hitting the API
     samanage_dry_run: bool = False
 

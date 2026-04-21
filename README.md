@@ -179,6 +179,46 @@ Each resource below has `list_*(query?, limit?)`, `get_*(id)`, `create_*(name, e
 - Groups (plus `add_group_member(id, email)`)
 - Solutions (`create_solution` also requires `description`; `update_solution` supports `description`)
 
+### Filtering cheatsheet
+
+Samanage only honors its full filter surface when the request sends
+`Accept: application/vnd.samanage.v2.1+json`. This server does that by
+default (override with `SAMANAGE_ACCEPT_HEADER` if your tenant needs a
+different version). With the plain `application/json` header, almost every
+filter except `state[]` is silently ignored — which is why filtering may
+"only work on state" against naive clients.
+
+Samanage expects array-valued keys with a `[]` suffix and uses the same key
+multiple times for multi-value filters:
+
+- `state[]`, `priority[]`, `assignee[]`, `requester[]`, `category[]`,
+  `site[]`, `department[]`, `group[]`, `tags[]`
+- `name.contains` — substring match on incident name.
+- `created[]` — pass twice for a date range; or use `created_gt` /
+  `created_lt` for open-ended ranges.
+- `updated` — number of days back (integer).
+- `sort_by`, `sort_order` — field name and `ASC`/`DESC`.
+- Custom fields — use the literal field name (with spaces) as the key, e.g.
+  `"Hardware Type": "Laptop"`.
+
+Every `list_*` tool in this server takes a `filters` dict that is passed
+verbatim to Samanage, so you can always access the full filter surface even
+when no named argument exists for the field:
+
+```json
+{
+  "state": ["Active"],
+  "assignee": "alice@example.com",
+  "filters": {
+    "Escalation Level": "Tier 2",
+    "tags[]": ["vip", "payroll"]
+  }
+}
+```
+
+The `list_incidents` response includes `applied_filters` so you can verify
+the exact query string that was built.
+
 ### Response templates (canned responses)
 
 - `list_response_templates(query?, limit?, full?)` — slim view by default.

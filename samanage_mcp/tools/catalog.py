@@ -23,9 +23,14 @@ _SINGULAR = {
 }
 
 
-async def _list(resource: str, query: str | None, limit: int) -> dict[str, Any]:
+async def _list(
+    resource: str,
+    query: str | None,
+    limit: int,
+    filters: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     try:
-        items = await client.list(resource, per_page=100)
+        items = await client.list(resource, params=filters, per_page=100)
     except SamanageError as exc:
         return {"error": str(exc), "status_code": exc.status_code, "body": exc.body}
     if query:
@@ -88,9 +93,14 @@ async def _delete(resource: str, id: str | int) -> dict[str, Any]:
 def register(mcp: FastMCP) -> None:
     # ---------- Categories ----------
     @mcp.tool()
-    async def list_categories(query: str | None = None, limit: int = 200) -> dict[str, Any]:
-        """List Samanage incident categories (subcategories are embedded in each)."""
-        return await _list("categories", query, limit)
+    async def list_categories(
+        query: str | None = None,
+        limit: int = 200,
+        filters: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """List Samanage incident categories (subcategories are embedded in each).
+        `filters` is a raw dict of query params sent verbatim to Samanage."""
+        return await _list("categories", query, limit, filters)
 
     @mcp.tool()
     async def get_category(id: str | int) -> dict[str, Any]:
@@ -125,9 +135,13 @@ def register(mcp: FastMCP) -> None:
 
     # ---------- Departments ----------
     @mcp.tool()
-    async def list_departments(query: str | None = None, limit: int = 200) -> dict[str, Any]:
-        """List Samanage departments."""
-        return await _list("departments", query, limit)
+    async def list_departments(
+        query: str | None = None,
+        limit: int = 200,
+        filters: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """List Samanage departments. `filters` passes query params verbatim."""
+        return await _list("departments", query, limit, filters)
 
     @mcp.tool()
     async def get_department(id: str | int) -> dict[str, Any]:
@@ -161,9 +175,13 @@ def register(mcp: FastMCP) -> None:
 
     # ---------- Sites ----------
     @mcp.tool()
-    async def list_sites(query: str | None = None, limit: int = 200) -> dict[str, Any]:
-        """List Samanage sites."""
-        return await _list("sites", query, limit)
+    async def list_sites(
+        query: str | None = None,
+        limit: int = 200,
+        filters: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """List Samanage sites. `filters` passes query params verbatim."""
+        return await _list("sites", query, limit, filters)
 
     @mcp.tool()
     async def get_site(id: str | int) -> dict[str, Any]:
@@ -195,9 +213,13 @@ def register(mcp: FastMCP) -> None:
 
     # ---------- Groups ----------
     @mcp.tool()
-    async def list_groups(query: str | None = None, limit: int = 200) -> dict[str, Any]:
-        """List Samanage groups (for assignment + membership)."""
-        return await _list("groups", query, limit)
+    async def list_groups(
+        query: str | None = None,
+        limit: int = 200,
+        filters: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """List Samanage groups. `filters` passes query params verbatim."""
+        return await _list("groups", query, limit, filters)
 
     @mcp.tool()
     async def get_group(id: str | int) -> dict[str, Any]:
@@ -235,9 +257,13 @@ def register(mcp: FastMCP) -> None:
 
     # ---------- Solutions ----------
     @mcp.tool()
-    async def list_solutions(query: str | None = None, limit: int = 200) -> dict[str, Any]:
-        """List Samanage knowledge-base solutions."""
-        return await _list("solutions", query, limit)
+    async def list_solutions(
+        query: str | None = None,
+        limit: int = 200,
+        filters: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """List Samanage knowledge-base solutions. `filters` passes query params verbatim."""
+        return await _list("solutions", query, limit, filters)
 
     @mcp.tool()
     async def get_solution(id: str | int) -> dict[str, Any]:
