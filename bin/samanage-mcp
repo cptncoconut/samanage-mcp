@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# Self-bootstrapping launcher for samanage-mcp.
+#
+# On first run: creates a .venv next to the repo and pip-installs the package.
+# On subsequent runs: skips straight to the server (<1s overhead).
+#
+# Intended entry point for MCP clients (Warp, Claude Desktop, Cursor):
+#
+#   {
+#     "mcpServers": {
+#       "samanage": {
+#         "command": "/absolute/path/to/samanage-mcp/bin/samanage-mcp",
+#         "env": { "SAMANAGE_API_TOKEN": "..." }
+#       }
+#     }
+#   }
+#
+# Requires Python 3.11+. Override interpreter via SAMANAGE_MCP_PYTHON.
+# Reinstalls automatically when pyproject.toml changes.
+#
+# IMPORTANT: All bootstrap logging is sent to stderr; stdout is reserved for
+# the MCP JSON-RPC protocol.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
+VENV_DIR="${REPO_DIR}/.venv"
+STAMP="${VENV_DIR}/.samanage-mcp-deps-installed"
+
+PYTHON="${SAMANAGE_MCP_PYTHON:-python3}"
+
+log() { printf '[samanage-mcp bootstrap] %s\n' "$*" >&2; }
+
+ensure_python() {
+  if ! command -v "$PYTHON" >/dev/null 2>&1; then
+    log "error: '$PYTHON' not found on PATH. Install Python 3.11+ or set SAMANAGE_MCP_PYTHON."
+    exit 1
+  fi
+  local ver
+  ver=$("$PYTHON" -c 'import sys; print("%d.%d" % sys.version_info[:2])')
+  local major minor
+  IFS='.' read -r major minor <<<"$ver"
+  if [ "$major" -lt 3 ] || { [ "$major" -eq 3 ] && [ "$minor" -lt 11 ]; }; then
+    log "error: Python 3.11+ required, found $ver at $(command -v "$PYTHON")"
+    exit 1
+  fi
+}
+
+ensure_venv() {
+  if [ ! -x "${VENV_DIR}/bin/python" ]; then
+    log "creating virtualenv at ${VENV_DIR} (first run; ~5s)"
+    "$PYTHON" -m venv "$VENV_DIR" >&2
+  fi
+}
+
+ensure_deps() {
+  local pyproject="${REPO_DIR}/pyproject.toml"
+  if [ ! -f "$STAMP" ] || [ "$pyproject" -nt "$STAMP" ]; then
+    log "installing dependencies into ${VENV_DIR} (first run or pyproject changed; ~10s)"
+    "${VENV_DIR}/bin/pip" install --quiet --upgrade pip >&2
+    "${VENV_DIR}/bin/pip" install --quiet "${REPO_DIR}" >&2
+    touch "$STAMP"
+  fi
+}
+
+ensure_python
+ensure_venv
+ensure_deps
+
+exec "${VENV_DIR}/bin/samanage-mcp" "$@"

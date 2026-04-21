@@ -8,6 +8,47 @@ MCP Inspector, etc).
 ## Status
 
 Phase 5: tests (pytest + respx), ruff lint, Makefile, Docker HTTP deploy.
+## Zero-install quickstart (clone + configure Warp, nothing else)
+
+Requires Python 3.11+ on your `PATH` (macOS: `brew install python@3.12` if
+you don't already have one). No `pip install`, no `make install`, no venv
+setup by hand.
+
+```bash
+git clone http://192.168.111.146:6980/dgaige/samanage-mcp.git ~/samanage-mcp
+```
+
+Then add this to your Warp MCP server config (Settings → AI → Manage MCP
+servers, or edit your `mcp_servers.json`):
+
+```json
+{
+  "mcpServers": {
+    "samanage": {
+      "command": "/Users/YOU/samanage-mcp/bin/samanage-mcp",
+      "env": {
+        "SAMANAGE_API_TOKEN": "YOUR_TOKEN_HERE",
+        "SAMANAGE_BASE_URL": "https://api.samanage.com"
+      }
+    }
+  }
+}
+```
+
+`bin/samanage-mcp` is a small wrapper that, on first invocation, creates a
+`.venv` in the repo and installs the project. Subsequent launches skip the
+install and just exec the server (<1s). To force a re-install, `touch`
+`pyproject.toml` or delete `.venv`. All bootstrap output goes to `stderr`
+so it never corrupts the MCP stdio stream.
+
+To use a specific Python interpreter (e.g. 3.12 from Homebrew):
+
+```json
+"env": {
+  "SAMANAGE_MCP_PYTHON": "/opt/homebrew/bin/python3.12",
+  "SAMANAGE_API_TOKEN": "..."
+}
+```
 
 ## Install (dev)
 
