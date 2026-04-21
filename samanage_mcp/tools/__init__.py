@@ -8,13 +8,20 @@ from __future__ import annotations
 
 from mcp.server.fastmcp import FastMCP
 
-from . import catalog, incidents, users
+from . import catalog, incidents, response_templates, users
 
 
 def register_all(mcp: FastMCP) -> None:
     incidents.register(mcp)
     users.register(mcp)
     catalog.register(mcp)
+    response_templates.register(mcp)
 
 
-__all__ = ["register_all", "incidents", "users", "catalog"]
+__all__ = [
+    "register_all",
+    "incidents",
+    "users",
+    "catalog",
+    "response_templates",
+]

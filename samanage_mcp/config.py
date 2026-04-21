@@ -23,6 +23,13 @@ class Settings(BaseSettings):
     samanage_api_token_file: str | None = None
     samanage_base_url: str = "https://api.samanage.com"
 
+    # Resource path (without `.json`) for response templates. The Samanage API
+    # doesn't publicly document this endpoint; override if your tenant exposes
+    # it under a different name (e.g. "comment_templates").
+    samanage_response_template_resource: str = "response_templates"
+    # Singular JSON wrapper key for response-template request bodies.
+    samanage_response_template_singular: str = "response_template"
+
     # Dry-run: write tools log and return synthetic results instead of hitting the API
     samanage_dry_run: bool = False
 

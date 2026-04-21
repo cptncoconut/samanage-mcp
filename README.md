@@ -179,6 +179,19 @@ Each resource below has `list_*(query?, limit?)`, `get_*(id)`, `create_*(name, e
 - Groups (plus `add_group_member(id, email)`)
 - Solutions (`create_solution` also requires `description`; `update_solution` supports `description`)
 
+### Response templates (canned responses)
+
+- `list_response_templates(query?, limit?, full?)` — slim view by default.
+- `get_response_template(id? | name?)` — lookup by id or exact name.
+- `create_response_template(name, body, extra?)`
+- `update_response_template(id, name?, body?, extra?)`
+- `delete_response_template(id)` — destructive.
+- `apply_response_template_to_incident(incident_id, template_id? | template_name?, is_private?, append_text?)` — fetch the template body and post it as a comment.
+
+Default endpoint is `/response_templates.json`. If your tenant exposes it under
+a different path, override with `SAMANAGE_RESPONSE_TEMPLATE_RESOURCE` (and
+`SAMANAGE_RESPONSE_TEMPLATE_SINGULAR` for the JSON wrapper key).
+
 All write tools (create / update / delete on any resource, plus
 `delete_incident`, `add_comment`, `add_attachment_to_incident`) honor
 `SAMANAGE_DRY_RUN=true`: they log the payload and return a synthetic result
