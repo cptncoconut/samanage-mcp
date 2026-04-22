@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     # HTTP timeouts
     http_timeout_seconds: float = 30.0
     list_timeout_seconds: float = 20.0
+    # Retry on 429 / 5xx. Set http_max_retries=0 to disable.
+    http_max_retries: int = 3
+    http_retry_backoff_factor: float = 1.0
 
     # Users cache TTL for requester resolution
     users_cache_ttl_seconds: int = 600

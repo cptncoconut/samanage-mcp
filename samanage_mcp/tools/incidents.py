@@ -185,7 +185,8 @@ def register(mcp: FastMCP) -> None:
         registered Samanage user via the cached users list. If `requester` is
         omitted and `SAMANAGE_DEFAULT_REQUESTER` is set, that email is used as a
         fallback. `extra` is merged into the `incident` payload for fields not
-        covered by explicit args (custom fields, site, department, etc).
+        covered by explicit args (custom fields, site, department, etc). Note:
+        `extra` is applied last and can overwrite any explicitly set field.
         """
         body: dict[str, Any] = {
             "name": name,
@@ -245,7 +246,7 @@ def register(mcp: FastMCP) -> None:
 
         return {
             "id": incident_id,
-            "incident": incident,
+            "incident": _slim_incident(incident),
             "attachments": attach_results,
         }
 
@@ -267,7 +268,8 @@ def register(mcp: FastMCP) -> None:
 
         NOTE: The Samanage API requires `category` alongside `subcategory`. When
         only `subcategory` is given, the current incident's category is fetched
-        automatically.
+        automatically. `extra` is applied last and can overwrite any explicitly
+        set field.
         """
         payload: dict[str, Any] = {}
         if note:

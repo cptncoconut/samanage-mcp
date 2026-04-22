@@ -17,6 +17,7 @@ import asyncio
 import ipaddress
 import logging
 import socket
+import functools
 from pathlib import Path
 from typing import Iterable
 from urllib.parse import urlparse, urljoin
@@ -51,6 +52,7 @@ def _configured_allowed_hosts() -> set[str]:
     return {h.strip().lower() for h in raw.split(",") if h.strip()}
 
 
+@functools.lru_cache(maxsize=1)
 def _allowed_hosts() -> set[str]:
     return _default_allowed_hosts() | _configured_allowed_hosts()
 

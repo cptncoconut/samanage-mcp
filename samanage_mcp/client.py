@@ -7,6 +7,7 @@ Tool modules should depend on this client and stay thin.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from typing import Any, Iterable
@@ -90,6 +91,32 @@ class SamanageClient:
                 "Samanage API not configured: set SAMANAGE_API_TOKEN and SAMANAGE_BASE_URL."
             )
 
+    async def _send(
+        self,
+        http: httpx.AsyncClient,
+        method: str,
+        url: str,
+        **kwargs: Any,
+    ) -> httpx.Response:
+        """Issue one HTTP request, retrying on 429 / 5xx with exponential back-off."""
+        max_retries = settings.http_max_retries
+        backoff = settings.http_retry_backoff_factor
+        for attempt in range(max_retries + 1):
+            resp = await http.request(method, url, **kwargs)
+            if resp.status_code != 429 and resp.status_code < 500:
+                return resp
+            if attempt < max_retries:
+                wait = backoff * (2 ** attempt)
+                retry_after = resp.headers.get("Retry-After", "")
+                if retry_after.isdigit():
+                    wait = float(retry_after)
+                logger.warning(
+                    "HTTP %s on %s; retrying in %.1fs (attempt %d/%d)",
+                    resp.status_code, url, wait, attempt + 1, max_retries,
+                )
+                await asyncio.sleep(wait)
+        return resp
+
     # ------------------------------------------------------------- core verbs
 
     async def get(
@@ -101,15 +128,15 @@ class SamanageClient:
     ) -> Any:
         self._require_configured()
         url = self._resource_url(resource, id=id)
-        async with httpx.AsyncClient(timeout=self.default_timeout) as client:
-            resp = await client.get(url, headers=self._headers(), params=params)
+        async with httpx.AsyncClient(timeout=self.default_timeout) as http:
+            resp = await self._send(http, "GET", url, headers=self._headers(), params=params)
             return self._parse(resp)
 
     async def post(self, resource: str, *, json: dict[str, Any]) -> Any:
         self._require_configured()
         url = self._resource_url(resource)
-        async with httpx.AsyncClient(timeout=self.default_timeout) as client:
-            resp = await client.post(url, headers=self._headers(json_body=True), json=json)
+        async with httpx.AsyncClient(timeout=self.default_timeout) as http:
+            resp = await self._send(http, "POST", url, headers=self._headers(json_body=True), json=json)
             return self._parse(resp)
 
     async def put(
@@ -121,18 +148,46 @@ class SamanageClient:
     ) -> Any:
         self._require_configured()
         url = self._resource_url(resource, id=id)
-        async with httpx.AsyncClient(timeout=self.default_timeout) as client:
-            resp = await client.put(url, headers=self._headers(json_body=True), json=json)
+        async with httpx.AsyncClient(timeout=self.default_timeout) as http:
+            resp = await self._send(http, "PUT", url, headers=self._headers(json_body=True), json=json)
             return self._parse(resp)
 
     async def delete(self, resource: str, *, id: str | int) -> Any:
         self._require_configured()
         url = self._resource_url(resource, id=id)
-        async with httpx.AsyncClient(timeout=self.default_timeout) as client:
-            resp = await client.delete(url, headers=self._headers())
+        async with httpx.AsyncClient(timeout=self.default_timeout) as http:
+            resp = await self._send(http, "DELETE", url, headers=self._headers())
             if resp.status_code in (200, 202, 204):
                 return True
             return self._parse(resp)
+
+    async def _paginate(
+        self,
+        url: str,
+        *,
+        params: dict[str, Any] | None = None,
+        per_page: int = 100,
+        max_pages: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Fetch all pages from *url*, returning a flat list of records."""
+        out: list[dict[str, Any]] = []
+        page = 1
+        async with httpx.AsyncClient(timeout=self.list_timeout) as http:
+            while True:
+                page_params: dict[str, Any] = {"per_page": per_page, "page": page}
+                if params:
+                    page_params.update(params)
+                resp = await self._send(http, "GET", url, headers=self._headers(), params=page_params)
+                batch = self._parse_list(resp)
+                if not batch:
+                    break
+                out.extend(batch)
+                if len(batch) < per_page:
+                    break
+                page += 1
+                if max_pages is not None and page > max_pages:
+                    break
+        return out
 
     async def list(
         self,
@@ -144,25 +199,10 @@ class SamanageClient:
     ) -> list[dict[str, Any]]:
         """Fetch all pages of a list resource until an empty/short page is seen."""
         self._require_configured()
-        url = self._resource_url(resource)
-        out: list[dict[str, Any]] = []
-        page = 1
-        async with httpx.AsyncClient(timeout=self.list_timeout) as client:
-            while True:
-                page_params: dict[str, Any] = {"per_page": per_page, "page": page}
-                if params:
-                    page_params.update(params)
-                resp = await client.get(url, headers=self._headers(), params=page_params)
-                batch = self._parse_list(resp)
-                if not batch:
-                    break
-                out.extend(batch)
-                if len(batch) < per_page:
-                    break
-                page += 1
-                if max_pages is not None and page > max_pages:
-                    break
-        return out
+        return await self._paginate(
+            self._resource_url(resource),
+            params=params, per_page=per_page, max_pages=max_pages,
+        )
 
     # ------------------------------------------------------- nested resources
 
@@ -182,7 +222,7 @@ class SamanageClient:
         self._require_configured()
         url = self._nested_url(parent, parent_id, sub)
         async with httpx.AsyncClient(timeout=self.default_timeout) as http:
-            resp = await http.get(url, headers=self._headers(), params=params)
+            resp = await self._send(http, "GET", url, headers=self._headers(), params=params)
             return self._parse(resp)
 
     async def nested_list(
@@ -196,25 +236,10 @@ class SamanageClient:
         max_pages: int | None = None,
     ) -> list[dict[str, Any]]:
         self._require_configured()
-        url = self._nested_url(parent, parent_id, sub)
-        out: list[dict[str, Any]] = []
-        page = 1
-        async with httpx.AsyncClient(timeout=self.list_timeout) as http:
-            while True:
-                page_params: dict[str, Any] = {"per_page": per_page, "page": page}
-                if params:
-                    page_params.update(params)
-                resp = await http.get(url, headers=self._headers(), params=page_params)
-                batch = self._parse_list(resp)
-                if not batch:
-                    break
-                out.extend(batch)
-                if len(batch) < per_page:
-                    break
-                page += 1
-                if max_pages is not None and page > max_pages:
-                    break
-        return out
+        return await self._paginate(
+            self._nested_url(parent, parent_id, sub),
+            params=params, per_page=per_page, max_pages=max_pages,
+        )
 
     async def nested_post(
         self,
@@ -227,7 +252,7 @@ class SamanageClient:
         self._require_configured()
         url = self._nested_url(parent, parent_id, sub)
         async with httpx.AsyncClient(timeout=self.default_timeout) as http:
-            resp = await http.post(url, headers=self._headers(json_body=True), json=json)
+            resp = await self._send(http, "POST", url, headers=self._headers(json_body=True), json=json)
             return self._parse(resp)
 
     async def upload_attachment(
@@ -250,8 +275,8 @@ class SamanageClient:
             "X-Samanage-Authorization": f"Bearer {self.api_token}",
             "Accept": settings.samanage_accept_header,
         }
-        async with httpx.AsyncClient(timeout=self.default_timeout) as client:
-            resp = await client.post(url, headers=headers, files=files, data=data)
+        async with httpx.AsyncClient(timeout=self.default_timeout) as http:
+            resp = await self._send(http, "POST", url, headers=headers, files=files, data=data)
             return self._parse(resp)
 
     # --------------------------------------------------------- response parse
@@ -394,12 +419,17 @@ def reset_client(**kwargs: Any) -> SamanageClient:
     """Reconfigure the module-level client in-place.
 
     Tool modules import `client` by reference at module load time, so this
-    function mutates the existing instance's attributes rather than rebinding
+    function updates the existing instance's attributes rather than rebinding
     the name.
     """
     fresh = SamanageClient(**kwargs)
-    client.__dict__.clear()
-    client.__dict__.update(fresh.__dict__)
+    client.base_url = fresh.base_url
+    client.api_token = fresh.api_token
+    client.default_timeout = fresh.default_timeout
+    client.list_timeout = fresh.list_timeout
+    client._users_cache_ttl = fresh._users_cache_ttl
+    client._users_cache = fresh._users_cache
+    client._users_cache_ts = fresh._users_cache_ts
     return client
 
 
