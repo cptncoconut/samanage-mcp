@@ -6,7 +6,6 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
-import httpx
 from mcp.server.fastmcp import FastMCP
 
 from ..attachments import AttachmentError, load_attachment
@@ -323,54 +322,29 @@ def register(mcp: FastMCP) -> None:
         start_month = datetime(now.year, now.month, 1, tzinfo=timezone.utc)
         start_iso = start_month.isoformat().replace("+00:00", "Z")
 
-        per_page = 100
+        try:
+            items = await client.list("incidents", per_page=100, max_pages=None)
+        except SamanageError as exc:
+            return {"error": str(exc), "status_code": exc.status_code, "body": exc.body}
+
         total = 0
         by_state: dict[str, int] = {}
-        page = 1
-        url = client._resource_url("incidents")  # noqa: SLF001 (internal use)
-        async with httpx.AsyncClient(timeout=settings.list_timeout_seconds) as http:
-            while True:
-                resp = await http.get(
-                    url,
-                    headers=client._headers(),  # noqa: SLF001
-                    params={"per_page": per_page, "page": page},
-                )
-                if resp.status_code != 200:
-                    return {
-                        "error": f"HTTP {resp.status_code}",
-                        "body": resp.text[:500],
-                    }
-                try:
-                    data = resp.json()
-                except Exception:
-                    return {"error": "bad JSON", "body": resp.text[:500]}
-                if not isinstance(data, list):
-                    return {"error": "unexpected body type", "type": str(type(data))}
-
-                matched = 0
-                all_older = True
-                for item in data:
-                    if not isinstance(item, dict):
-                        continue
-                    created = (
-                        item.get("created_at") or item.get("created") or item.get("created_on")
-                    )
-                    if not created:
-                        continue
-                    try:
-                        dt = datetime.fromisoformat(str(created).replace("Z", "+00:00"))
-                    except Exception:
-                        continue
-                    if dt.date() >= start_month.date():
-                        total += 1
-                        matched += 1
-                        all_older = False
-                        state_key = item.get("state") or item.get("status") or "UNKNOWN"
-                        by_state[state_key] = by_state.get(state_key, 0) + 1
-
-                if len(data) < per_page or all_older:
-                    break
-                page += 1
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            created = (
+                item.get("created_at") or item.get("created") or item.get("created_on")
+            )
+            if not created:
+                continue
+            try:
+                dt = datetime.fromisoformat(str(created).replace("Z", "+00:00"))
+            except Exception:
+                continue
+            if dt.date() >= start_month.date():
+                total += 1
+                state_key = item.get("state") or item.get("status") or "UNKNOWN"
+                by_state[state_key] = by_state.get(state_key, 0) + 1
 
         return {"start_iso": start_iso, "total": total, "by_state": by_state}
 

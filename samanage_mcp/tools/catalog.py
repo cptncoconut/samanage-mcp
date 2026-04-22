@@ -48,7 +48,15 @@ async def _get(resource: str, id: str | int) -> dict[str, Any]:
     return {"resource": resource, "id": id, "item": resp}
 
 
+def _get_singular(resource: str) -> str | None:
+    """Return the JSON body wrapper key for *resource*, or None if unknown."""
+    return _SINGULAR.get(resource)
+
+
 async def _create(resource: str, name: str, extra: dict[str, Any] | None) -> dict[str, Any]:
+    singular = _get_singular(resource)
+    if singular is None:
+        return {"error": f"unknown resource {resource!r}; add it to _SINGULAR"}
     payload: dict[str, Any] = {"name": name}
     if extra:
         payload.update(extra)
@@ -56,7 +64,7 @@ async def _create(resource: str, name: str, extra: dict[str, Any] | None) -> dic
         logger.warning("[DRY RUN] create %s payload: %s", resource, payload)
         return {"dry_run": True, "resource": resource, "payload": payload}
     try:
-        resp = await client.post(resource, json={_SINGULAR[resource]: payload})
+        resp = await client.post(resource, json={singular: payload})
     except SamanageError as exc:
         return {"error": str(exc), "status_code": exc.status_code, "body": exc.body}
     return {"resource": resource, "item": resp}
@@ -67,19 +75,24 @@ async def _update(
     id: str | int,
     fields: dict[str, Any],
 ) -> dict[str, Any]:
+    singular = _get_singular(resource)
+    if singular is None:
+        return {"error": f"unknown resource {resource!r}; add it to _SINGULAR"}
     if not fields:
         return {"error": "nothing to update", "id": id}
     if settings.samanage_dry_run:
         logger.warning("[DRY RUN] update %s id=%s payload=%s", resource, id, fields)
         return {"dry_run": True, "resource": resource, "id": id, "payload": fields}
     try:
-        resp = await client.put(resource, id=id, json={_SINGULAR[resource]: fields})
+        resp = await client.put(resource, id=id, json={singular: fields})
     except SamanageError as exc:
         return {"error": str(exc), "status_code": exc.status_code, "body": exc.body}
     return {"resource": resource, "id": id, "updated": fields, "response": resp}
 
 
 async def _delete(resource: str, id: str | int) -> dict[str, Any]:
+    if _get_singular(resource) is None:
+        return {"error": f"unknown resource {resource!r}; add it to _SINGULAR"}
     if settings.samanage_dry_run:
         logger.warning("[DRY RUN] delete %s id=%s", resource, id)
         return {"dry_run": True, "resource": resource, "id": id}

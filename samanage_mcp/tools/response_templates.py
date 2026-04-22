@@ -48,10 +48,11 @@ def _extract_body(template: dict[str, Any]) -> str | None:
 
 
 async def _find_by_name(name: str) -> dict[str, Any] | None:
-    try:
-        items = await client.list(_resource(), per_page=100)
-    except SamanageError:
-        return None
+    """Return the first template matching *name* (case-insensitive), or None.
+
+    Raises `SamanageError` on API failure so callers can surface the real error.
+    """
+    items = await client.list(_resource(), per_page=100)
     target = name.strip().lower()
     for item in items:
         if str(item.get("name", "")).strip().lower() == target:
