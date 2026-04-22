@@ -1,0 +1,15 @@
+.git
+.gitignore
+.env
+.env.*
+*.pyc
+__pycache__
+*.egg-info
+dist
+build
+.ruff_cache
+.pytest_cache
+tests
+uv.lock
+*.md
+!README.md

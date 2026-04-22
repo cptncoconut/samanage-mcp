@@ -101,6 +101,68 @@ async def _attach_to_incident(incident_id: str | int, attachment: str) -> dict[s
     return {"source": attachment, "ok": True, "response": result}
 
 
+def _matches_party(
+    incident: dict[str, Any],
+    field: str,
+    values: list[str] | None,
+) -> bool:
+    """Return True if the incident's assignee/requester matches any of *values*.
+
+    Matches are case-insensitive against both `email` and `name` sub-fields.
+    When *values* is None/empty the check is skipped (returns True).
+    """
+    if not values:
+        return True
+    party = incident.get(field)
+    if not party or not isinstance(party, dict):
+        return False
+    email = str(party.get("email") or "").lower()
+    name = str(party.get("name") or "").lower()
+    for v in values:
+        v_lower = v.lower()
+        if v_lower in email or v_lower in name:
+            return True
+    return False
+
+
+_SLIM_DROP = {
+    "description", "description_no_html",
+    "releases", "problems", "problem", "incidents", "changes", "tasks",
+    "time_tracks", "solutions", "assets", "mobiles", "other_assets",
+    "configuration_items", "discovery_hardwares", "purchase_orders",
+    "sla_violations", "custom_fields_values", "cc",
+}
+
+
+def _slim_incident(item: dict[str, Any]) -> dict[str, Any]:
+    """Return a copy of *item* with large/unused fields removed."""
+    return {k: v for k, v in item.items() if k not in _SLIM_DROP}
+
+
+def _client_filter(
+    items: list[dict[str, Any]],
+    *,
+    name_contains: str | None,
+    assignee: list[str] | str | None,
+    requester: list[str] | str | None,
+) -> list[dict[str, Any]]:
+    """Apply filters that the Samanage API does not reliably honour server-side."""
+    assignee_list = _as_list(assignee)
+    requester_list = _as_list(requester)
+    name_lower = name_contains.lower() if name_contains else None
+
+    result = []
+    for item in items:
+        if name_lower and name_lower not in str(item.get("name") or "").lower():
+            continue
+        if not _matches_party(item, "assignee", assignee_list):
+            continue
+        if not _matches_party(item, "requester", requester_list):
+            continue
+        result.append(item)
+    return result
+
+
 def register(mcp: FastMCP) -> None:
     @mcp.tool()
     async def create_incident(
@@ -225,6 +287,8 @@ def register(mcp: FastMCP) -> None:
             resp = await client.put("incidents", id=id, json={"incident": payload})
         except SamanageError as exc:
             return {"error": str(exc), "status_code": exc.status_code, "body": exc.body}
+        if isinstance(resp, dict):
+            resp = _slim_incident(resp)
         return {"id": id, "updated": payload, "response": resp}
 
     @mcp.tool()
@@ -308,6 +372,7 @@ def register(mcp: FastMCP) -> None:
         per_page: int = 100,
         max_pages: int | None = 5,
         filters: dict[str, Any] | None = None,
+        slim: bool = True,
     ) -> dict[str, Any]:
         """List Samanage incidents with filters.
 
@@ -322,6 +387,9 @@ def register(mcp: FastMCP) -> None:
           {"priority[]": ["High", "Critical"]}
           {"My Custom Field": "Some Value"}
           {"tags[]": "vip"}
+
+        `slim=True` (default) strips large unused fields (description, cc, etc.)
+        to keep responses compact. Pass `slim=False` for the full raw record.
 
         Samanage only honors filters when the versioned Accept header is sent;
         this server sets `application/vnd.samanage.v2.1+json` by default.
@@ -351,6 +419,17 @@ def register(mcp: FastMCP) -> None:
             )
         except SamanageError as exc:
             return {"error": str(exc), "status_code": exc.status_code, "body": exc.body}
+
+        # The Samanage API silently ignores several filter params (name.contains,
+        # assignee[], requester[]). Apply these client-side after fetching.
+        items = _client_filter(
+            items,
+            name_contains=name_contains,
+            assignee=assignee,
+            requester=requester,
+        )
+        if slim:
+            items = [_slim_incident(i) for i in items]
         return {"count": len(items), "incidents": items, "applied_filters": params}
 
     @mcp.tool()

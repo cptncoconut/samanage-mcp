@@ -67,13 +67,14 @@ def register(mcp: FastMCP) -> None:
         full: bool = False,
         filters: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """List Samanage response (canned) templates. Optional `query` filters by
-        name substring (client-side). `filters` passes query params verbatim to
-        Samanage. Returns a slim view by default; pass `full=True` for raw records."""
+        """List Samanage response (canned) templates. Optional `query` filters
+        by name substring (client-side). Returns a slim view by default;
+        pass `full=True` for raw records."""
         try:
             items = await client.list(_resource(), params=filters, per_page=100)
         except SamanageError as exc:
             return {"error": str(exc), "status_code": exc.status_code, "body": exc.body}
+
         if query:
             q = query.strip().lower()
             items = [i for i in items if q in str(i.get("name", "")).lower()]
