@@ -19,6 +19,15 @@ from .config import settings
 
 logger = logging.getLogger(__name__)
 
+# 429 + transient server errors — non-retriable codes (501, 505, etc.) are excluded.
+_RETRY_STATUSES: frozenset[int] = frozenset({429, 500, 502, 503, 504})
+# Network-level exceptions worth retrying.
+_RETRY_EXCEPTIONS = (
+    httpx.ConnectError,
+    httpx.TimeoutException,
+    httpx.RemoteProtocolError,
+)
+
 
 class SamanageError(RuntimeError):
     """Raised for non-2xx Samanage responses."""
@@ -98,12 +107,30 @@ class SamanageClient:
         url: str,
         **kwargs: Any,
     ) -> httpx.Response:
-        """Issue one HTTP request, retrying on 429 / 5xx with exponential back-off."""
+        """Issue one HTTP request, retrying on transient errors with exponential back-off.
+
+        Retries on HTTP 429 / 500 / 502 / 503 / 504 and on network-level
+        exceptions (ConnectError, TimeoutException, RemoteProtocolError).
+        Non-retriable codes (4xx except 429, 501, 505, …) are returned immediately.
+        """
         max_retries = settings.http_max_retries
         backoff = settings.http_retry_backoff_factor
         for attempt in range(max_retries + 1):
-            resp = await http.request(method, url, **kwargs)
-            if resp.status_code != 429 and resp.status_code < 500:
+            try:
+                resp = await http.request(method, url, **kwargs)
+            except _RETRY_EXCEPTIONS as exc:
+                if attempt < max_retries:
+                    wait = backoff * (2 ** attempt)
+                    logger.warning(
+                        "%s on %s; retrying in %.1fs (attempt %d/%d)",
+                        type(exc).__name__, url, wait, attempt + 1, max_retries,
+                    )
+                    await asyncio.sleep(wait)
+                    continue
+                raise SamanageError(
+                    f"Network error after {max_retries} retries on {url}: {exc}"
+                ) from exc
+            if resp.status_code not in _RETRY_STATUSES:
                 return resp
             if attempt < max_retries:
                 wait = backoff * (2 ** attempt)

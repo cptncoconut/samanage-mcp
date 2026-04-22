@@ -324,8 +324,17 @@ def register(mcp: FastMCP) -> None:
         start_month = datetime(now.year, now.month, 1, tzinfo=timezone.utc)
         start_iso = start_month.isoformat().replace("+00:00", "Z")
 
+        end_iso = now.isoformat().replace("+00:00", "Z")
         try:
-            items = await client.list("incidents", per_page=100, max_pages=None)
+            # Pass a date-range filter to reduce server-side result set.
+            # Samanage may not honour it on all tenants; the date check below
+            # acts as a client-side safety net regardless.
+            items = await client.list(
+                "incidents",
+                params={"created[]": [start_iso, end_iso]},
+                per_page=100,
+                max_pages=None,
+            )
         except SamanageError as exc:
             return {"error": str(exc), "status_code": exc.status_code, "body": exc.body}
 

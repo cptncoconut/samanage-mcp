@@ -50,7 +50,7 @@ def register(mcp: FastMCP) -> None:
             else:
                 users = await client.fetch_users()
         except SamanageError as exc:
-            return {"error": str(exc), "status_code": exc.status_code}
+            return {"error": str(exc), "status_code": exc.status_code, "body": exc.body}
 
         if query:
             q = query.strip().lower()
@@ -72,7 +72,7 @@ def register(mcp: FastMCP) -> None:
         try:
             users = await client.fetch_users()
         except SamanageError as exc:
-            return {"error": str(exc), "status_code": exc.status_code}
+            return {"error": str(exc), "status_code": exc.status_code, "body": exc.body}
 
         target = email.strip().lower()
         for u in users:

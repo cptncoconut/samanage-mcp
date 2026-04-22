@@ -105,4 +105,7 @@ settings = Settings()
 # `settings.samanage_api_token`.
 _token, token_source = _load_token_from_file(settings)
 if _token and not (settings.samanage_api_token or "").strip():
+    # Intentional post-construction mutation: pydantic-settings v2 does not
+    # set frozen=True by default, so this is safe. `settings` is a
+    # write-once singleton after this point; nothing else mutates it.
     settings.samanage_api_token = _token

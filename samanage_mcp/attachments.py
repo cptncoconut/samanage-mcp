@@ -14,10 +14,10 @@ ready to hand to ``SamanageClient.upload_attachment``.
 from __future__ import annotations
 
 import asyncio
+import functools
 import ipaddress
 import logging
 import socket
-import functools
 from pathlib import Path
 from typing import Iterable
 from urllib.parse import urlparse, urljoin
