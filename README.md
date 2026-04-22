@@ -7,18 +7,15 @@ An [MCP](https://modelcontextprotocol.io) server that exposes SolarWinds Service
 Cursor, and other MCP clients create, update, query, and close incidents — as well as
 manage users, categories, departments, groups, and response templates.
 
-## Zero-install quickstart (clone + configure Warp, nothing else)
+## Quickstart
 
-Requires Python 3.11+ on your `PATH` (macOS: `brew install python@3.12` if
-you don't already have one). No `pip install`, no `make install`, no venv
-setup by hand.
+Requires Python 3.11+. No `pip install` or venv setup needed.
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/samanage-mcp.git ~/samanage-mcp
+git clone https://github.com/cptncoconut/samanage-mcp.git ~/samanage-mcp
 ```
 
-Then add this to your Warp MCP server config (Settings → AI → Manage MCP
-servers, or edit your `mcp_servers.json`):
+Add to your MCP client config (Warp: Settings → AI → Manage MCP servers):
 
 ```json
 {
@@ -34,125 +31,10 @@ servers, or edit your `mcp_servers.json`):
 }
 ```
 
-`bin/samanage-mcp` is a small wrapper that, on first invocation, creates a
-`.venv` in the repo and installs the project. Subsequent launches skip the
-install and just exec the server (<1s). To force a re-install, `touch`
-`pyproject.toml` or delete `.venv`. All bootstrap output goes to `stderr`
-so it never corrupts the MCP stdio stream.
+`bin/samanage-mcp` auto-creates a `.venv` and installs the project on first run
+(<10s). Subsequent launches skip straight to the server (<1s).
 
-To use a specific Python interpreter (e.g. 3.12 from Homebrew):
-
-```json
-"env": {
-  "SAMANAGE_MCP_PYTHON": "/opt/homebrew/bin/python3.12",
-  "SAMANAGE_API_TOKEN": "..."
-}
-```
-
-## Install (dev)
-
-```bash
-make install           # creates .venv + installs dev extras
-# or manually:
-python -m venv .venv && source .venv/bin/activate && pip install -e ".[dev]"
-```
-
-## Configuration
-
-All settings arrive through environment variables. There are three supported
-sources, in priority order:
-
-1. **MCP client `env` block (recommended).** Every MCP client (Warp, Claude
-   Desktop, Cursor, Codeium, …) lets you set environment variables for the
-   stdio server subprocess. The token never touches disk in this project.
-2. **`SAMANAGE_API_TOKEN_FILE`** — absolute path to a file whose contents are
-   the token. Handy for Docker secrets, Kubernetes secret volumes, systemd
-   `LoadCredential`, or 1Password / Vault CLI injection.
-3. **`.env` next to the CWD** (development convenience only; see "Local dev
-   with .env" below).
-
-Supported variables:
-
-| Variable | Default | Description |
-|---|---|---|
-| `SAMANAGE_API_TOKEN` | — | API token with read/write permissions. |
-| `SAMANAGE_API_TOKEN_FILE` | — | Path to a file containing the token (alternative to above). |
-| `SAMANAGE_BASE_URL` | `https://api.samanage.com` | API base URL. |
-| `SAMANAGE_DRY_RUN` | `false` | Log write calls without hitting the API. |
-| `SAMANAGE_DEFAULT_REQUESTER` | — | Fallback requester email for `create_incident`. |
-| `SAMANAGE_ACCEPT_HEADER` | `application/vnd.samanage.v2.1+json` | Override only if your tenant needs a different API version. |
-| `LOG_LEVEL` | `INFO` | Python logging level. |
-| `HTTP_TIMEOUT_SECONDS` | `30.0` | Timeout for single-resource API calls. |
-| `LIST_TIMEOUT_SECONDS` | `20.0` | Timeout per page for paginated list calls. |
-| `HTTP_MAX_RETRIES` | `3` | Retries on HTTP 429 / 500 / 502 / 503 / 504 and network errors. |
-| `HTTP_RETRY_BACKOFF_FACTOR` | `1.0` | Exponential back-off multiplier (wait = factor × 2ⁿ seconds). |
-
-On startup the server logs which source the token came from:
-`samanage-mcp credentials loaded from env; base_url=...`.
-
-### Attachment safety (SSRF / path-traversal guards)
-- `ATTACHMENT_MAX_BYTES` — hard cap for both URL downloads and local-file reads (default 25 MiB).
-- `ATTACHMENT_URL_ALLOWED_HOSTS` — comma-separated hostname allowlist for URL attachments. The Samanage base URL host is always permitted; other hosts must be listed here.
-- `ATTACHMENT_ALLOW_PRIVATE_IPS` — default `false`; URLs that resolve to private / loopback / link-local / reserved / multicast IPs are rejected (blocks cloud metadata, localhost, internal networks).
-- `ATTACHMENT_MAX_REDIRECTS` — default `3`; each redirect hop is re-validated against the host + IP policy.
-- `ATTACHMENT_ALLOW_LOCAL_PATHS` — default `false`; must be `true` to attach from local disk.
-- `ATTACHMENT_ROOT` — required when local paths are enabled. Any path must resolve under this directory; symlinks and path-escape attempts are rejected.
-
-## Run
-
-Stdio (default, for Warp / Claude Desktop / Cursor / MCP Inspector):
-
-```bash
-samanage-mcp
-```
-
-Streamable HTTP:
-
-```bash
-samanage-mcp --http --host 127.0.0.1 --port 8765
-```
-
-Inspect interactively:
-
-```bash
-npx @modelcontextprotocol/inspector samanage-mcp
-```
-
-## MCP client config (passing the API key from your agent)
-
-Every MCP client spawns the stdio server as a subprocess and lets you set
-environment variables on it. Put the token there — no `.env` needed. The
-token stays in your agent's config store (Warp Drive, Claude Desktop, etc.)
-instead of on disk next to the code.
-
-Warp / Claude Desktop / Cursor / Codeium all use the same JSON shape:
-
-```json
-{
-  "mcpServers": {
-    "samanage": {
-      "command": "samanage-mcp",
-      "env": {
-        "SAMANAGE_API_TOKEN": "YOUR_TOKEN_HERE",
-        "SAMANAGE_BASE_URL": "https://api.samanage.com"
-      }
-    }
-  }
-}
-```
-
-If your agent is not on `PATH`, use the absolute path (e.g.
-`/Users/you/projects/samanage-mcp/.venv/bin/samanage-mcp`).
-
-To dry-run every write call from the agent without touching Samanage, add
-`"SAMANAGE_DRY_RUN": "true"` to the same `env` block.
-
-### Local dev with `.env` (optional)
-
-For a quick local run outside an MCP client, copy `.env.example` to `.env`
-and fill it in. Values in `.env` are only loaded when the matching environment
-variable is **not** already set, so the MCP-client `env` block always wins.
-`chmod 600 .env` and never commit it (`.env` is already in `.gitignore`).
+> Need pip install instead? `pip install -e .` then run `samanage-mcp`.
 
 ## Tools
 
@@ -162,7 +44,7 @@ variable is **not** already set, so the MCP-client `env` block always wins.
 - `update_incident(id, note?, state?, priority?, assignee?, category?, subcategory?, close?, extra?)`
 - `list_incidents(state?, priority?, assignee?, requester?, category?, site?, department?, group?, name_contains?, created_from?, created_to?, updated_days?, sort_by?, sort_order?, per_page?, max_pages?, filters?, slim?)`
 - `get_incident(id)`
-- `delete_incident(id)` — destructive; respects dry-run.
+- `delete_incident(id)` — destructive; respects `SAMANAGE_DRY_RUN`.
 - `list_comments(incident_id)` / `add_comment(incident_id, body, is_private?)`
 - `add_attachment_to_incident(incident_id, source)` — local path or URL.
 - `summarize_incidents_this_month()` — total + per-state counts for the current calendar month.
@@ -178,7 +60,8 @@ variable is **not** already set, so the MCP-client `env` block always wins.
 
 ### Catalog
 
-Each resource below has `list_*(query?, limit?)`, `get_*(id)`, `create_*(name, extra?)`, `update_*(id, name?, extra?)`, `delete_*(id)`:
+Each resource has `list_*(query?, limit?, filters?)`, `get_*(id)`,
+`create_*(name, extra?)`, `update_*(id, name?, extra?)`, `delete_*(id)`:
 
 - Categories
 - Departments
@@ -186,112 +69,57 @@ Each resource below has `list_*(query?, limit?)`, `get_*(id)`, `create_*(name, e
 - Groups (plus `add_group_member(id, email)`)
 - Solutions (`create_solution` also requires `description`; `update_solution` supports `description`)
 
-### Filtering cheatsheet
+### Response templates
 
-Samanage only honors its full filter surface when the request sends
-`Accept: application/vnd.samanage.v2.1+json`. This server does that by
-default (override with `SAMANAGE_ACCEPT_HEADER` if your tenant needs a
-different version). With the plain `application/json` header, almost every
-filter except `state[]` is silently ignored — which is why filtering may
-"only work on state" against naive clients.
+- `list_response_templates(query?, limit?, full?)`
+- `get_response_template(id? | name?)`
+- `create_response_template(name, body, extra?)`
+- `update_response_template(id, name?, body?, extra?)`
+- `delete_response_template(id)` — destructive.
+- `apply_response_template_to_incident(incident_id, template_id? | template_name?, is_private?, append_text?)`
 
-Samanage expects array-valued keys with a `[]` suffix and uses the same key
-multiple times for multi-value filters:
+### Filtering
 
-- `state[]`, `priority[]`, `assignee[]`, `requester[]`, `category[]`,
-  `site[]`, `department[]`, `group[]`, `tags[]`
-- `name.contains` — substring match on incident name.
-- `created[]` — pass twice for a date range; or use `created_gt` /
-  `created_lt` for open-ended ranges.
-- `updated` — number of days back (integer).
-- `sort_by`, `sort_order` — field name and `ASC`/`DESC`.
-- Custom fields — use the literal field name (with spaces) as the key, e.g.
-  `"Hardware Type": "Laptop"`.
-
-Every `list_*` tool in this server takes a `filters` dict that is passed
-verbatim to Samanage, so you can always access the full filter surface even
-when no named argument exists for the field:
+All `list_*` tools accept a `filters` dict passed verbatim to the Samanage API.
+The `list_incidents` response includes `applied_filters` for debugging.
 
 ```json
 {
-  "state": ["Active"],
+  "state": ["New", "Assigned"],
   "assignee": "alice@example.com",
   "filters": {
     "Escalation Level": "Tier 2",
-    "tags[]": ["vip", "payroll"]
+    "tags[]": ["vip"]
   }
 }
 ```
 
-The `list_incidents` response includes `applied_filters` so you can verify
-the exact query string that was built.
+Samanage only honours the full filter surface with
+`Accept: application/vnd.samanage.v2.1+json` — this server sends that header
+by default.
 
-### Response templates (canned responses)
+### Dry-run
 
-- `list_response_templates(query?, limit?, full?)` — slim view by default.
-- `get_response_template(id? | name?)` — lookup by id or exact name.
-- `create_response_template(name, body, extra?)`
-- `update_response_template(id, name?, body?, extra?)`
-- `delete_response_template(id)` — destructive.
-- `apply_response_template_to_incident(incident_id, template_id? | template_name?, is_private?, append_text?)` — fetch the template body and post it as a comment.
-
-Default endpoint is `/response_templates.json`. If your tenant exposes it under
-a different path, override with `SAMANAGE_RESPONSE_TEMPLATE_RESOURCE` (and
-`SAMANAGE_RESPONSE_TEMPLATE_SINGULAR` for the JSON wrapper key).
-
-All write tools (create / update / delete on any resource, plus
-`delete_incident`, `add_comment`, `add_attachment_to_incident`) honor
-`SAMANAGE_DRY_RUN=true`: they log the payload and return a synthetic result
-instead of calling the API. Destructive tools are not gated behind a separate
-flag — use dry-run or a scoped API token to limit blast radius.
-
-## Development
-
-```bash
-make lint              # ruff check
-make format            # ruff format + autofix
-make test              # pytest (respx mocks the Samanage API)
-make run               # stdio server
-make run-http          # streamable HTTP on 127.0.0.1:8765
-make inspect           # launch MCP Inspector pointing at the stdio server
-```
-
-Tests live under `tests/` and never hit the real Samanage API:
-
-- `tests/test_client.py` — `SamanageClient` unit tests (respx-mocked httpx).
-- `tests/test_tools.py` — end-to-end tool calls via `FastMCP.call_tool`, covering dry-run writes, filter-building reads, and error surfacing.
-
-## Docker (HTTP transport)
-
-> **Security:** The HTTP transport has no built-in authentication. The Docker
-> Compose file binds to `127.0.0.1:8765` by default. If you need remote access,
-> put an authenticated reverse proxy in front — see [SECURITY.md](SECURITY.md).
-
-```bash
-cp .env.example .env   # fill in SAMANAGE_API_TOKEN
-docker compose up --build
-```
-
-The container serves streamable HTTP on `127.0.0.1:8765`. Point your MCP
-client at `http://127.0.0.1:8765/mcp`.
+All write tools honour `SAMANAGE_DRY_RUN=true`: they log the payload and return
+a synthetic result without calling the API.
 
 ## Examples
 
-Dry-run create (no API call is made):
-
-```bash
-SAMANAGE_DRY_RUN=true samanage-mcp
-```
-
-Then from your MCP client, call `create_incident`:
+Create an incident:
 
 ```json
 {
   "name": "wifi down at Site A",
   "description": "APs offline since 14:00",
-  "priority": "high",
+  "priority": "High",
   "requester": "user@example.com"
 }
+```
+
+Add a note and close:
+
+```json
+{ "id": 12345, "note": "confirmed fixed after reboot", "close": true }
 ```
 
 List recent high-priority incidents:
@@ -300,17 +128,18 @@ List recent high-priority incidents:
 { "priority": "High", "updated_days": 7, "max_pages": 2 }
 ```
 
-Add a note and close:
-
-```json
-{ "id": 12345, "note": "user confirmed fixed after reboot", "close": true }
-```
-
-Update category and subcategory:
+Update category:
 
 ```json
 { "id": 12345, "category": "Devops", "subcategory": "Backup Notifications" }
 ```
+
+## Documentation
+
+- [Configuration](docs/configuration.md) — all environment variables, token sources, attachment safety
+- [Docker / HTTP transport](docs/docker.md) — container deployment, reverse proxy, Docker secrets
+- [Development](docs/development.md) — dev setup, make targets, test guide, project structure
+- [Security](SECURITY.md) — known limitations and secure deployment checklist
 
 ## Roadmap
 
