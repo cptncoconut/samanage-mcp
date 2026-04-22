@@ -73,15 +73,23 @@ sources, in priority order:
 
 Supported variables:
 
-- `SAMANAGE_API_TOKEN` — personal API token with read/write permissions.
-- `SAMANAGE_API_TOKEN_FILE` — alternative to `SAMANAGE_API_TOKEN`.
-- `SAMANAGE_BASE_URL` — typically `https://api.samanage.com`.
-- `SAMANAGE_DRY_RUN` — `true` to log write calls without hitting the API.
-- `SAMANAGE_DEFAULT_REQUESTER` — fallback requester email for create tools.
-- `LOG_LEVEL` — default `INFO`.
+| Variable | Default | Description |
+|---|---|---|
+| `SAMANAGE_API_TOKEN` | — | API token with read/write permissions. |
+| `SAMANAGE_API_TOKEN_FILE` | — | Path to a file containing the token (alternative to above). |
+| `SAMANAGE_BASE_URL` | `https://api.samanage.com` | API base URL. |
+| `SAMANAGE_DRY_RUN` | `false` | Log write calls without hitting the API. |
+| `SAMANAGE_DEFAULT_REQUESTER` | — | Fallback requester email for `create_incident`. |
+| `SAMANAGE_ACCEPT_HEADER` | `application/vnd.samanage.v2.1+json` | Override only if your tenant needs a different API version. |
+| `LOG_LEVEL` | `INFO` | Python logging level. |
+| `HTTP_TIMEOUT_SECONDS` | `30.0` | Timeout for single-resource API calls. |
+| `LIST_TIMEOUT_SECONDS` | `20.0` | Timeout per page for paginated list calls. |
+| `HTTP_MAX_RETRIES` | `3` | Retries on HTTP 429 / 500 / 502 / 503 / 504 and network errors. |
+| `HTTP_RETRY_BACKOFF_FACTOR` | `1.0` | Exponential back-off multiplier (wait = factor × 2ⁿ seconds). |
 
-On startup the server logs which source the token came from, e.g.
+On startup the server logs which source the token came from:
 `samanage-mcp credentials loaded from env; base_url=...`.
+
 ### Attachment safety (SSRF / path-traversal guards)
 - `ATTACHMENT_MAX_BYTES` — hard cap for both URL downloads and local-file reads (default 25 MiB).
 - `ATTACHMENT_URL_ALLOWED_HOSTS` — comma-separated hostname allowlist for URL attachments. The Samanage base URL host is always permitted; other hosts must be listed here.
@@ -151,17 +159,17 @@ variable is **not** already set, so the MCP-client `env` block always wins.
 ### Incidents
 
 - `create_incident(name, description, priority?, category?, subcategory?, requester?, assignee?, state?, attachments?, resolve_requester_from_text?, extra?)`
-- `update_incident(id, note?, state?, priority?, assignee?, close?, extra?)`
-- `list_incidents(state?, priority?, assignee?, requester?, name_contains?, created_from?, created_to?, updated_days?, sort_by?, sort_order?, per_page?, max_pages?, extra_params?)`
+- `update_incident(id, note?, state?, priority?, assignee?, category?, subcategory?, close?, extra?)`
+- `list_incidents(state?, priority?, assignee?, requester?, category?, site?, department?, group?, name_contains?, created_from?, created_to?, updated_days?, sort_by?, sort_order?, per_page?, max_pages?, filters?, slim?)`
 - `get_incident(id)`
 - `delete_incident(id)` — destructive; respects dry-run.
 - `list_comments(incident_id)` / `add_comment(incident_id, body, is_private?)`
 - `add_attachment_to_incident(incident_id, source)` — local path or URL.
-- `summarize_incidents_this_month()` — total + per-state counts.
+- `summarize_incidents_this_month()` — total + per-state counts for the current calendar month.
 
 ### Users
 
-- `list_users(query?, limit?, full?)`
+- `list_users(query?, limit?, full?, filters?)`
 - `find_user_by_email(email)`
 - `resolve_user(candidate, fallback?)`
 - `create_user(name, email, role?, department?, site?, extra?)`
@@ -255,12 +263,17 @@ Tests live under `tests/` and never hit the real Samanage API:
 
 ## Docker (HTTP transport)
 
+> **Security:** The HTTP transport has no built-in authentication. The Docker
+> Compose file binds to `127.0.0.1:8765` by default. If you need remote access,
+> put an authenticated reverse proxy in front — see [SECURITY.md](SECURITY.md).
+
 ```bash
+cp .env.example .env   # fill in SAMANAGE_API_TOKEN
 docker compose up --build
 ```
 
-The container serves streamable HTTP on `:8765` using the `.env` file for
-credentials. Point your remote MCP client at `http://<host>:8765/mcp`.
+The container serves streamable HTTP on `127.0.0.1:8765`. Point your MCP
+client at `http://127.0.0.1:8765/mcp`.
 
 ## Examples
 
@@ -291,6 +304,12 @@ Add a note and close:
 
 ```json
 { "id": 12345, "note": "user confirmed fixed after reboot", "close": true }
+```
+
+Update category and subcategory:
+
+```json
+{ "id": 12345, "category": "Devops", "subcategory": "Backup Notifications" }
 ```
 
 ## Roadmap
