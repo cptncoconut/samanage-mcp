@@ -1,3 +1,6 @@
+# WARNING: No authentication on the HTTP endpoint. Restrict access with
+# a reverse proxy before exposing beyond your local machine.
+# Copy .env.example to .env and fill in SAMANAGE_API_TOKEN before running.
 services:
   samanage-mcp:
     build: .
@@ -8,4 +11,4 @@ services:
       HOST: 0.0.0.0
       PORT: 8765
     ports:
-      - "8765:8765"
+      - "127.0.0.1:8765:8765"

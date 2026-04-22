@@ -1,13 +1,12 @@
 # samanage-mcp
 
-MCP server exposing SolarWinds Service Desk (Samanage) operations as tools.
-Forked from `slackticketbot`; stripped of Slack/OCR/vision/metrics code to focus
-on a pure Samanage API surface for MCP clients (Warp, Claude Desktop, Cursor,
-MCP Inspector, etc).
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-## Status
+An [MCP](https://modelcontextprotocol.io) server that exposes SolarWinds Service Desk
+(Samanage / SWSD) operations as tools, letting AI agents in Warp, Claude Desktop,
+Cursor, and other MCP clients create, update, query, and close incidents — as well as
+manage users, categories, departments, groups, and response templates.
 
-Phase 5: tests (pytest + respx), ruff lint, Makefile, Docker HTTP deploy.
 ## Zero-install quickstart (clone + configure Warp, nothing else)
 
 Requires Python 3.11+ on your `PATH` (macOS: `brew install python@3.12` if
@@ -15,7 +14,7 @@ you don't already have one). No `pip install`, no `make install`, no venv
 setup by hand.
 
 ```bash
-git clone http://192.168.111.146:6980/dgaige/samanage-mcp.git ~/samanage-mcp
+git clone https://github.com/YOUR_USERNAME/samanage-mcp.git ~/samanage-mcp
 ```
 
 Then add this to your Warp MCP server config (Settings → AI → Manage MCP
@@ -296,4 +295,14 @@ Add a note and close:
 
 ## Roadmap
 
-- Phase 4 (deferred): assets (hardwares, mobiles, other_assets, configuration_items), ITIL (changes, problems, releases), misc (custom_fields, tasks, time_tracks).
+- Assets: hardwares, mobiles, other_assets, configuration_items
+- ITIL: changes, problems, releases
+- Misc: custom_fields, tasks, time_tracks
+
+## Contributing
+
+Pull requests welcome. Run `make lint test` before submitting.
+
+## License
+
+[MIT](LICENSE)

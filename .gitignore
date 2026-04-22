@@ -1,6 +1,7 @@
 .venv/
 __pycache__/
 *.pyc
+*.pyo
 .DS_Store
 .env
 *.egg-info/
@@ -8,3 +9,12 @@ build/
 dist/
 .ruff_cache/
 .pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.log
+*.egg
+WHEEL
+.mypy_cache/
+.hypothesis/
