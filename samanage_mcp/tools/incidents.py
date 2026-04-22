@@ -131,6 +131,7 @@ _SLIM_DROP = {
     "time_tracks", "solutions", "assets", "mobiles", "other_assets",
     "configuration_items", "discovery_hardwares", "purchase_orders",
     "sla_violations", "custom_fields_values", "cc",
+    "href", "href_account_domain",
 }
 
 
@@ -256,12 +257,19 @@ def register(mcp: FastMCP) -> None:
         state: str | None = None,
         priority: str | None = None,
         assignee: str | None = None,
+        category: str | None = None,
+        subcategory: str | None = None,
         close: bool = False,
         extra: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Update an existing incident: add a note/comment, change state, priority,
-        or reassign. Pass `close=True` to set state to "Closed" (unless
-        overridden via `state`)."""
+        category, subcategory, or reassign. Pass `close=True` to set state to
+        "Closed" (unless overridden via `state`).
+
+        NOTE: The Samanage API requires `category` alongside `subcategory`. When
+        only `subcategory` is given, the current incident's category is fetched
+        automatically.
+        """
         payload: dict[str, Any] = {}
         if note:
             payload.setdefault("comment", {})["body"] = note
@@ -273,6 +281,21 @@ def register(mcp: FastMCP) -> None:
             payload["state"] = state
         elif close:
             payload["state"] = "Closed"
+        if subcategory:
+            cat_name = category
+            if not cat_name:
+                try:
+                    current = await client.get("incidents", id=id)
+                    cat_obj = current.get("category") if isinstance(current, dict) else None
+                    cat_name = cat_obj.get("name") if isinstance(cat_obj, dict) else None
+                except SamanageError as exc:
+                    logger.warning(
+                        "update_incident: failed to fetch category for %s: %s", id, exc
+                    )
+            payload["category"] = {"name": cat_name} if cat_name else {}
+            payload["subcategory"] = {"name": subcategory}
+        elif category:
+            payload["category"] = {"name": category}
         if extra:
             payload.update(extra)
 
