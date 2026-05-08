@@ -61,7 +61,7 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.http:
-        mcp.run(transport="streamable-http", host=args.host, port=args.port)
+        mcp.run(transport="streamable-http", bind_host=args.host, bind_port=args.port)
     else:
         mcp.run()
 
